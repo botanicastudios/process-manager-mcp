@@ -40,6 +40,7 @@ Use at your own risk. The authors are not responsible for any damage caused by m
 
 ```bash
 npm install -g @botanicastudios/process-manager-mcp
+procman start "npm run dev"
 ```
 
 Or run directly with npx:
