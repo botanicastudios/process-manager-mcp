@@ -240,6 +240,352 @@ describe("Tool Handler Logic", () => {
     });
   });
 
+  describe("get_logs tool handler", () => {
+    // Create the handler function that would be used in the MCP server
+    const getLogsHandler = async ({ pid, numLines = 100 }: { pid: number; numLines?: number }) => {
+      try {
+        const logs = await mockProcessManager.getProcessLogs(pid, numLines);
+        return {
+          content: [
+            {
+              type: "text",
+              text: logs,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to retrieve logs: ${error}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    };
+
+    it("should retrieve logs for a process successfully", async () => {
+      const mockLogs = "2024-01-01 12:00:00 Starting process...\n2024-01-01 12:00:01 Process running...";
+      mockProcessManager.getProcessLogs.mockResolvedValue(mockLogs);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+      });
+
+      expect(mockProcessManager.getProcessLogs).toHaveBeenCalledWith(12345, 100);
+      expect(result.content[0].text).toBe(mockLogs);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should use custom numLines parameter", async () => {
+      const mockLogs = "Line 1\nLine 2\nLine 3";
+      mockProcessManager.getProcessLogs.mockResolvedValue(mockLogs);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+        numLines: 50,
+      });
+
+      expect(mockProcessManager.getProcessLogs).toHaveBeenCalledWith(12345, 50);
+      expect(result.content[0].text).toBe(mockLogs);
+    });
+
+    it("should use default numLines value when not specified", async () => {
+      const mockLogs = "Default log output";
+      mockProcessManager.getProcessLogs.mockResolvedValue(mockLogs);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+      });
+
+      expect(mockProcessManager.getProcessLogs).toHaveBeenCalledWith(12345, 100);
+    });
+
+    it("should handle process logs retrieval failure", async () => {
+      const errorMessage = "Log file not found";
+      mockProcessManager.getProcessLogs.mockRejectedValue(new Error(errorMessage));
+
+      const result = await getLogsHandler({
+        pid: 99999,
+      });
+
+      expect(result.content[0].text).toContain("Failed to retrieve logs");
+      expect(result.content[0].text).toContain(errorMessage);
+      expect(result.isError).toBe(true);
+    });
+
+    it("should handle empty logs", async () => {
+      mockProcessManager.getProcessLogs.mockResolvedValue("");
+
+      const result = await getLogsHandler({
+        pid: 12345,
+      });
+
+      expect(result.content[0].text).toBe("");
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle logs with special characters", async () => {
+      const specialLogs = "Error: Something went wrong!\n[WARNING] Special chars: @#$%^&*()\nPath: /usr/local/bin";
+      mockProcessManager.getProcessLogs.mockResolvedValue(specialLogs);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+      });
+
+      expect(result.content[0].text).toBe(specialLogs);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle very large numLines parameter", async () => {
+      const mockLogs = "Large log output";
+      mockProcessManager.getProcessLogs.mockResolvedValue(mockLogs);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+        numLines: 10000,
+      });
+
+      expect(mockProcessManager.getProcessLogs).toHaveBeenCalledWith(12345, 10000);
+      expect(result.content[0].text).toBe(mockLogs);
+    });
+
+    it("should handle when process logs returns 'No logs available'", async () => {
+      const noLogsMessage = "No logs available for this process";
+      mockProcessManager.getProcessLogs.mockResolvedValue(noLogsMessage);
+
+      const result = await getLogsHandler({
+        pid: 12345,
+      });
+
+      expect(result.content[0].text).toBe(noLogsMessage);
+      expect(result.isError).toBeUndefined();
+    });
+  });
+
+  describe("list_processes tool handler", () => {
+    // Create the handler function that would be used in the MCP server
+    const listProcessesHandler = async () => {
+      try {
+        const processes = mockProcessManager.getCurrentCwdProcesses();
+        const processList = Object.entries(processes).map(([key, data]: [string, any]) => ({
+          pid: data.pid,
+          command: data.command,
+          status: data.status,
+          startTime: new Date(data.startTime).toISOString(),
+          autoShutdown: data.autoShutdown,
+          cwd: data.cwd,
+          errorOutput: data.errorOutput,
+        }));
+
+        // Format as readable text
+        if (processList.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "No processes are currently running.",
+              },
+            ],
+          };
+        }
+
+        const formattedList = processList
+          .map(
+            (p) =>
+              `PID: ${p.pid}\n` +
+              `Command: ${p.command}\n` +
+              `Status: ${p.status}\n` +
+              `Started: ${p.startTime}\n` +
+              `Auto-shutdown: ${p.autoShutdown}\n` +
+              `Working Directory: ${p.cwd}` +
+              (p.errorOutput ? `\nError: ${p.errorOutput}` : "")
+          )
+          .join("\n\n");
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formattedList,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to list processes: ${error}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    };
+
+    it("should list multiple running processes", async () => {
+      const mockProcesses = {
+        "npm_run_dev_123": {
+          pid: 12345,
+          command: "npm run dev",
+          status: "running",
+          startTime: 1704067200000, // 2024-01-01 00:00:00
+          autoShutdown: true,
+          cwd: "/home/user/project",
+        },
+        "python_server_456": {
+          pid: 67890,
+          command: "python server.py",
+          status: "running",
+          startTime: 1704067260000, // 2024-01-01 00:01:00
+          autoShutdown: false,
+          cwd: "/home/user/api",
+        },
+      };
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue(mockProcesses);
+
+      const result = await listProcessesHandler();
+
+      expect(mockProcessManager.getCurrentCwdProcesses).toHaveBeenCalled();
+      expect(result.content[0].text).toContain("PID: 12345");
+      expect(result.content[0].text).toContain("Command: npm run dev");
+      expect(result.content[0].text).toContain("Status: running");
+      expect(result.content[0].text).toContain("Auto-shutdown: true");
+      expect(result.content[0].text).toContain("Working Directory: /home/user/project");
+      expect(result.content[0].text).toContain("PID: 67890");
+      expect(result.content[0].text).toContain("Command: python server.py");
+      expect(result.content[0].text).toContain("Auto-shutdown: false");
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle empty process list", async () => {
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue({});
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toBe("No processes are currently running.");
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should display error output when present", async () => {
+      const mockProcesses = {
+        "failed_process": {
+          pid: 99999,
+          command: "node broken.js",
+          status: "crashed",
+          startTime: 1704067200000,
+          autoShutdown: true,
+          cwd: "/home/user/project",
+          errorOutput: "Error: Module not found",
+        },
+      };
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue(mockProcesses);
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toContain("PID: 99999");
+      expect(result.content[0].text).toContain("Status: crashed");
+      expect(result.content[0].text).toContain("Error: Module not found");
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle single process", async () => {
+      const mockProcesses = {
+        "single_process": {
+          pid: 11111,
+          command: "node app.js",
+          status: "running",
+          startTime: 1704067200000,
+          autoShutdown: true,
+          cwd: "/usr/local/app",
+        },
+      };
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue(mockProcesses);
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toContain("PID: 11111");
+      expect(result.content[0].text).toContain("Command: node app.js");
+      expect(result.content[0].text).toContain("Working Directory: /usr/local/app");
+      expect(result.content[0].text).not.toContain("\n\n"); // Should not have double newline separator for single process
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle processes with various statuses", async () => {
+      const mockProcesses = {
+        "running_proc": {
+          pid: 11111,
+          command: "node app.js",
+          status: "running",
+          startTime: 1704067200000,
+          autoShutdown: true,
+          cwd: "/app",
+        },
+        "stopped_proc": {
+          pid: 22222,
+          command: "npm test",
+          status: "stopped",
+          startTime: 1704067200000,
+          autoShutdown: true,
+          cwd: "/app",
+        },
+        "crashed_proc": {
+          pid: 33333,
+          command: "python script.py",
+          status: "crashed",
+          startTime: 1704067200000,
+          autoShutdown: false,
+          cwd: "/app",
+          errorOutput: "Segmentation fault",
+        },
+      };
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue(mockProcesses);
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toContain("Status: running");
+      expect(result.content[0].text).toContain("Status: stopped");
+      expect(result.content[0].text).toContain("Status: crashed");
+      expect(result.content[0].text).toContain("Segmentation fault");
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should handle process listing failure", async () => {
+      const errorMessage = "Failed to access process data";
+      mockProcessManager.getCurrentCwdProcesses.mockImplementation(() => {
+        throw new Error(errorMessage);
+      });
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toContain("Failed to list processes");
+      expect(result.content[0].text).toContain(errorMessage);
+      expect(result.isError).toBe(true);
+    });
+
+    it("should format timestamps correctly", async () => {
+      const mockProcesses = {
+        "timed_process": {
+          pid: 12345,
+          command: "node server.js",
+          status: "running",
+          startTime: 1704067200000, // 2024-01-01 00:00:00 UTC
+          autoShutdown: true,
+          cwd: "/app",
+        },
+      };
+      mockProcessManager.getCurrentCwdProcesses.mockReturnValue(mockProcesses);
+
+      const result = await listProcessesHandler();
+
+      expect(result.content[0].text).toContain("Started: 2024-01-01T00:00:00.000Z");
+      expect(result.isError).toBeUndefined();
+    });
+  });
+
   describe("input validation", () => {
     it("should require either command or pid for end_process", async () => {
       mockProcessManager.endProcess.mockResolvedValue(false);

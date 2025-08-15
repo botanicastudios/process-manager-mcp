@@ -147,6 +147,81 @@ Or on error:
 }
 ```
 
+### get_logs
+
+Fetch logs for a specific process by PID.
+
+**Parameters:**
+
+- `pid` (number, required): The PID of the process to get logs for
+- `numLines` (number, optional, default: 100): Number of lines to retrieve from the end of the log
+
+**Example:**
+
+```json
+{
+  "tool": "get_logs",
+  "parameters": {
+    "pid": 12345,
+    "numLines": 50
+  }
+}
+```
+
+**Returns:**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "2024-01-01 12:00:00 Server started\n2024-01-01 12:00:01 Listening on port 3000..."
+    }
+  ]
+}
+```
+
+### list_processes
+
+List all running processes for the current working directory.
+
+**Parameters:** None
+
+**Example:**
+
+```json
+{
+  "tool": "list_processes",
+  "parameters": {}
+}
+```
+
+**Returns:**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "PID: 12345\nCommand: npm run dev\nStatus: running\nStarted: 2024-01-01T00:00:00.000Z\nAuto-shutdown: true\nWorking Directory: /home/user/project\n\nPID: 67890\nCommand: python server.py\nStatus: running\nStarted: 2024-01-01T00:01:00.000Z\nAuto-shutdown: false\nWorking Directory: /home/user/api"
+    }
+  ]
+}
+```
+
+Or when no processes are running:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "No processes are currently running."
+    }
+  ]
+}
+```
+
 ## Resources
 
 ### processes://processes
@@ -251,7 +326,28 @@ This will run `npm start` in the `./frontend` directory relative to the current 
 
 ### Viewing Process Logs
 
-Access the resource `processes://processes/12345/logs?numLines=50` to get the last 50 lines of logs for process with PID 12345.
+Use the `get_logs` tool:
+
+```json
+{
+  "tool": "get_logs",
+  "parameters": {
+    "pid": 12345,
+    "numLines": 50
+  }
+}
+```
+
+Or access the resource `processes://processes/12345/logs?numLines=50` to get the last 50 lines of logs for process with PID 12345.
+
+### Listing All Processes
+
+```json
+{
+  "tool": "list_processes",
+  "parameters": {}
+}
+```
 
 ## Development
 

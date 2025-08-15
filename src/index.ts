@@ -135,6 +135,114 @@ server.registerTool(
   }
 );
 
+// Register get_logs tool
+server.registerTool(
+  "get_logs",
+  {
+    title: "Get Process Logs",
+    description: "Fetch logs for a specific process by PID",
+    inputSchema: {
+      pid: z.number().describe("The PID of the process to get logs for"),
+      numLines: z
+        .number()
+        .optional()
+        .default(100)
+        .describe("Number of lines to retrieve from the end of the log (defaults to 100)"),
+    },
+  },
+  async ({ pid, numLines = 100 }) => {
+    try {
+      const logs = await processManager.getProcessLogs(pid, numLines);
+      return {
+        content: [
+          {
+            type: "text",
+            text: logs,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to retrieve logs: ${error}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+// Register list_processes tool
+server.registerTool(
+  "list_processes",
+  {
+    title: "List Processes",
+    description: "List all running processes for the current working directory",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const processes = processManager["getCurrentCwdProcesses"]();
+      const processList = Object.entries(processes).map(([key, data]) => ({
+        pid: data.pid,
+        command: data.command,
+        status: data.status,
+        startTime: new Date(data.startTime).toISOString(),
+        autoShutdown: data.autoShutdown,
+        cwd: data.cwd,
+        errorOutput: data.errorOutput,
+      }));
+
+      // Format as readable text
+      if (processList.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No processes are currently running.",
+            },
+          ],
+        };
+      }
+
+      const formattedList = processList
+        .map(
+          (p) =>
+            `PID: ${p.pid}\n` +
+            `Command: ${p.command}\n` +
+            `Status: ${p.status}\n` +
+            `Started: ${p.startTime}\n` +
+            `Auto-shutdown: ${p.autoShutdown}\n` +
+            `Working Directory: ${p.cwd}` +
+            (p.errorOutput ? `\nError: ${p.errorOutput}` : "")
+        )
+        .join("\n\n");
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formattedList,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Failed to list processes: ${error}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // Register processes resource
 server.registerResource(
   "processes",
