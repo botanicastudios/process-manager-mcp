@@ -37,6 +37,12 @@ export declare class ProcessManager {
     getCurrentCwdProcesses(): {
         [key: string]: ProcessData;
     };
+    getAllProcessesInDirectory(includeSubdirectories?: boolean): {
+        [key: string]: ProcessData;
+    };
+    getAllProcesses(): {
+        [key: string]: ProcessData;
+    };
     getProcessLogs(pid: number, tailLength?: number): Promise<string>;
     private startMonitoring;
     checkProcessHealth(): void;

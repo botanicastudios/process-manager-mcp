@@ -10,7 +10,7 @@
  */
 
 import { Command } from "commander";
-import { ProcessManager } from "./process-manager.js";
+import { ProcessManager, type ProcessData } from "./process-manager.js";
 import { execa, type ResultPromise } from "execa";
 import path from "path";
 import { readFile } from "fs/promises";
@@ -57,10 +57,10 @@ export class ProcessManagerCLI {
 
     // List command
     this.program
-      .command("list")
-      .description("List all managed processes")
-      .action(async () => {
-        await this.listCommand();
+      .command("list [scope]")
+      .description("List managed processes. Use 'all' to show all processes from all directories")
+      .action(async (scope?: string) => {
+        await this.listCommand(scope === "all");
       });
 
     // Stop command
@@ -181,16 +181,33 @@ export class ProcessManagerCLI {
     }
   }
 
-  private async listCommand() {
-    const processes = this.processManager.getCurrentCwdProcesses();
+  private async listCommand(showAll: boolean = false) {
+    let processes: { [key: string]: ProcessData };
+    let headerMessage: string;
+    
+    if (showAll) {
+      processes = this.processManager.getAllProcesses();
+      headerMessage = "All managed processes:\n";
+    } else {
+      // Show processes from current directory and subdirectories
+      processes = this.processManager.getAllProcessesInDirectory(true);
+      const currentCwd = process.env.CWD || process.cwd();
+      headerMessage = `Processes in ${currentCwd} and subdirectories:\n`;
+    }
+    
     const processList = Object.entries(processes);
 
     if (processList.length === 0) {
-      console.log("No processes are currently running.");
+      if (showAll) {
+        console.log("No processes are currently running.");
+      } else {
+        console.log("No processes are currently running in this directory or its subdirectories.");
+        console.log("Use 'procman list all' to see all processes.");
+      }
       process.exit(0);
     }
 
-    console.log("Running processes:\n");
+    console.log(headerMessage);
     
     for (const [_, data] of processList) {
       console.log(`PID: ${data.pid}`);
@@ -210,8 +227,8 @@ export class ProcessManagerCLI {
   private async stopCommand(pid: number) {
     console.log(`Stopping process ${pid}...`);
     
-    // Check if process exists in our list
-    const processes = this.processManager.getCurrentCwdProcesses();
+    // Check if process exists in our list (check all processes)
+    const processes = this.processManager.getAllProcesses();
     let processExists = false;
     let isAlive = false;
     
@@ -254,7 +271,7 @@ export class ProcessManagerCLI {
   }
 
   private async stopAllCommand() {
-    const processes = this.processManager.getCurrentCwdProcesses();
+    const processes = this.processManager.getAllProcesses();
     const processList = Object.entries(processes);
 
     if (processList.length === 0) {
@@ -315,8 +332,8 @@ export class ProcessManagerCLI {
       // Stream logs in real-time
       console.log(`Streaming logs for process ${pid} (Ctrl+C to stop)...\n`);
       
-      // First, get the log file path
-      const processes = this.processManager.getCurrentCwdProcesses();
+      // First, get the log file path (check all processes)
+      const processes = this.processManager.getAllProcesses();
       let logFile: string | undefined;
 
       for (const data of Object.values(processes)) {

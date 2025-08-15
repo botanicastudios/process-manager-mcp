@@ -266,18 +266,25 @@ export class ProcessManager {
   async endProcess(pid: number): Promise<boolean> {
     let processToKill: ProcessData | null = null;
     let processKey: string | null = null;
+    let processCwd: string | null = null;
 
-    // Find the process by PID
-    const processes = this.getCurrentCwdProcesses();
-    for (const [key, data] of Object.entries(processes)) {
-      if (data.pid === pid) {
-        processToKill = data;
-        processKey = key;
-        break;
+    // Find the process by PID across all directories
+    const allConfigs = this.config.store;
+    
+    for (const [cwd, processes] of Object.entries(allConfigs)) {
+      for (const [key, data] of Object.entries(processes as any)) {
+        const processData = data as ProcessData;
+        if (processData.pid === pid) {
+          processToKill = processData;
+          processKey = key;
+          processCwd = cwd;
+          break;
+        }
       }
+      if (processToKill) break;
     }
 
-    if (!processToKill || !processKey) {
+    if (!processToKill || !processKey || !processCwd) {
       return false;
     }
 
@@ -317,30 +324,33 @@ export class ProcessManager {
     }
 
     // Always remove from config - either we killed it, or it was already dead
-    this.removeProcessData(processKey);
+    this.removeProcessData(processKey, processCwd);
     
     // Return true if we successfully killed it OR if it was already dead (stale)
     return killSuccess || !processIsAlive;
   }
 
-  private storeProcessData(processKey: string, data: ProcessData) {
-    const config = this.config.get(this.currentCwd, {});
+  private storeProcessData(processKey: string, data: ProcessData, cwd?: string) {
+    const targetCwd = cwd || this.currentCwd;
+    const config = this.config.get(targetCwd, {});
     config[processKey] = data;
-    this.config.set(this.currentCwd, config);
+    this.config.set(targetCwd, config);
   }
 
-  private updateProcessData(processKey: string, data: ProcessData) {
-    const config = this.config.get(this.currentCwd, {});
+  private updateProcessData(processKey: string, data: ProcessData, cwd?: string) {
+    const targetCwd = cwd || this.currentCwd;
+    const config = this.config.get(targetCwd, {});
     if (config[processKey]) {
       config[processKey] = data;
-      this.config.set(this.currentCwd, config);
+      this.config.set(targetCwd, config);
     }
   }
 
-  private removeProcessData(processKey: string) {
-    const config = this.config.get(this.currentCwd, {});
+  private removeProcessData(processKey: string, cwd?: string) {
+    const targetCwd = cwd || this.currentCwd;
+    const config = this.config.get(targetCwd, {});
     delete config[processKey];
-    this.config.set(this.currentCwd, config);
+    this.config.set(targetCwd, config);
   }
 
   private getProcessData(processKey: string): ProcessData | null {
@@ -352,12 +362,54 @@ export class ProcessManager {
     return this.config.get(this.currentCwd, {});
   }
 
+  public getAllProcessesInDirectory(includeSubdirectories: boolean = true): { [key: string]: ProcessData } {
+    const allConfigs = this.config.store;
+    const result: { [key: string]: ProcessData } = {};
+    const targetCwd = this.currentCwd;
+    
+    for (const [cwd, processes] of Object.entries(allConfigs)) {
+      // Check if this cwd matches our criteria
+      let shouldInclude = false;
+      
+      if (includeSubdirectories) {
+        // Include if cwd is the target directory or a subdirectory of it
+        shouldInclude = cwd === targetCwd || cwd.startsWith(targetCwd + path.sep);
+      } else {
+        // Only include exact match
+        shouldInclude = cwd === targetCwd;
+      }
+      
+      if (shouldInclude) {
+        // Add all processes from this cwd
+        for (const [processKey, data] of Object.entries(processes as any)) {
+          result[`${cwd}::${processKey}`] = data as ProcessData;
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  public getAllProcesses(): { [key: string]: ProcessData } {
+    const allConfigs = this.config.store;
+    const result: { [key: string]: ProcessData } = {};
+    
+    for (const [cwd, processes] of Object.entries(allConfigs)) {
+      for (const [processKey, data] of Object.entries(processes as any)) {
+        result[`${cwd}::${processKey}`] = data as ProcessData;
+      }
+    }
+    
+    return result;
+  }
+
   async getProcessLogs(pid: number, tailLength: number = 100): Promise<string> {
-    const processes = this.getCurrentCwdProcesses();
+    // Search across all processes to find the log file
+    const allProcesses = this.getAllProcesses();
     let logFile: string | undefined;
 
     // Find the log file for this PID
-    for (const data of Object.values(processes)) {
+    for (const data of Object.values(allProcesses)) {
       if (data.pid === pid && data.logFile) {
         logFile = data.logFile;
         break;

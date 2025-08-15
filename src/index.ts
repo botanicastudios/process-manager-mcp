@@ -196,13 +196,27 @@ server.registerTool(
   "list_processes",
   {
     title: "List Processes",
-    description: "List all running processes for the current working directory",
-    inputSchema: {},
+    description: "List running processes. By default shows processes from current working directory and subdirectories.",
+    inputSchema: {
+      show_all_processes: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Show all processes, not just those started from the current working directory or subdirectories"),
+    },
   },
-  async () => {
+  async ({ show_all_processes = false }) => {
     try {
-      const processes = processManager["getCurrentCwdProcesses"]();
-      const processList = Object.entries(processes).map(([key, data]) => ({
+      let processes: { [key: string]: any };
+      
+      if (show_all_processes) {
+        processes = processManager["getAllProcesses"]();
+      } else {
+        // Show processes from current directory and subdirectories
+        processes = processManager["getAllProcessesInDirectory"](true);
+      }
+      
+      const processList = Object.entries(processes).map(([key, data]: [string, any]) => ({
         pid: data.pid,
         command: data.command,
         status: data.status,
@@ -214,11 +228,14 @@ server.registerTool(
 
       // Format as readable text
       if (processList.length === 0) {
+        const message = show_all_processes 
+          ? "No processes are currently running."
+          : "No processes are currently running in this directory or its subdirectories.";
         return {
           content: [
             {
               type: "text",
-              text: "No processes are currently running.",
+              text: message,
             },
           ],
         };
@@ -265,10 +282,11 @@ server.registerResource(
   "processes://processes",
   {
     title: "Running Processes",
-    description: "List of running processes for the current working directory",
+    description: "List of running processes for the current working directory and subdirectories",
   },
   async (uri: any) => {
-    const processes = processManager["getCurrentCwdProcesses"]();
+    // Use the new method to get processes from current directory and subdirectories
+    const processes = processManager["getAllProcessesInDirectory"](true);
     const processList = Object.entries(processes).map(([key, data]) => ({
       key,
       pid: data.pid,
