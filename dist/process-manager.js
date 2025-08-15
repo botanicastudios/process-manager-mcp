@@ -8,7 +8,7 @@
 import { execa } from "execa";
 import Conf from "conf";
 import { readFile } from "fs/promises";
-import { existsSync, mkdirSync, createWriteStream } from "fs";
+import { existsSync, mkdirSync, createWriteStream, openSync } from "fs";
 import path from "path";
 import os from "os";
 export class ProcessManager {
@@ -87,65 +87,98 @@ export class ProcessManager {
         const baseCwd = process.env.CWD || this.currentCwd;
         const workingDir = cwd ? path.resolve(baseCwd, cwd) : baseCwd;
         try {
-            // Start the process
-            const childProcess = execa(command, {
-                shell: true,
-                cwd: workingDir,
-                stdio: ["ignore", "pipe", "pipe"],
-                detached: !autoShutdown, // Detach if not auto-shutdown to persist after MCP server stops
-            });
-            if (!childProcess.pid) {
-                throw new Error("Failed to start process: No PID returned");
+            let childProcess;
+            let pid;
+            let actualLogFilePath;
+            if (!autoShutdown) {
+                // For persistent processes, we need to get the PID first, then set up logging
+                // Use a temporary timestamp for initial log file
+                const tempTimestamp = Date.now();
+                actualLogFilePath = this.getLogFilePath(tempTimestamp);
+                // Create the log file first
+                const outFd = openSync(actualLogFilePath, 'a');
+                const errFd = openSync(actualLogFilePath, 'a');
+                // Check if this is an npm/yarn/pnpm command that needs stdin
+                const needsStdin = /^(npm|yarn|pnpm|npx)\s/.test(command);
+                childProcess = execa(command, {
+                    shell: true,
+                    cwd: workingDir,
+                    stdio: needsStdin ? ["pipe", outFd, errFd] : ["ignore", outFd, errFd],
+                    detached: true,
+                });
+                if (!childProcess.pid) {
+                    throw new Error("Failed to start process: No PID returned");
+                }
+                pid = childProcess.pid;
+                // For npm/yarn/pnpm commands, keep stdin open but don't write to it
+                if (needsStdin && childProcess.stdin) {
+                    // Keep stdin open to prevent npm from exiting
+                    // We don't close it, which keeps the process running
+                }
+                // Unref the process so it can continue after parent exits
+                childProcess.unref();
             }
-            const pid = childProcess.pid;
-            const logFilePath = this.getLogFilePath(pid);
+            else {
+                // For auto-shutdown processes, use pipe to capture output
+                childProcess = execa(command, {
+                    shell: true,
+                    cwd: workingDir,
+                    stdio: ["ignore", "pipe", "pipe"],
+                    detached: false,
+                });
+                if (!childProcess.pid) {
+                    throw new Error("Failed to start process: No PID returned");
+                }
+                pid = childProcess.pid;
+                actualLogFilePath = this.getLogFilePath(pid);
+                // Set up log redirection for auto-shutdown processes
+                const logStream = createWriteStream(actualLogFilePath, { flags: "a" });
+                // Handle stream errors to prevent crashes
+                logStream.on('error', (error) => {
+                    // Log stream error, but don't crash the process
+                    console.warn(`Log stream error for PID ${pid}:`, error.message);
+                });
+                if (childProcess.stdout) {
+                    childProcess.stdout.on('error', (error) => {
+                        console.warn(`Stdout error for PID ${pid}:`, error.message);
+                    });
+                    childProcess.stdout.pipe(logStream, { end: false });
+                }
+                if (childProcess.stderr) {
+                    childProcess.stderr.on('error', (error) => {
+                        console.warn(`Stderr error for PID ${pid}:`, error.message);
+                    });
+                    childProcess.stderr.pipe(logStream, { end: false });
+                }
+                // Handle process completion for auto-shutdown processes
+                childProcess.on("exit", (code, signal) => {
+                    this.runningProcesses.delete(pid);
+                    // Safely close the log stream
+                    setTimeout(() => {
+                        try {
+                            if (!logStream.destroyed) {
+                                logStream.end();
+                            }
+                        }
+                        catch (error) {
+                            // Ignore stream closing errors
+                        }
+                    }, 100);
+                    const processData = this.getProcessData(processKey);
+                    if (processData) {
+                        if (code === 0) {
+                            processData.status = "stopped";
+                        }
+                        else {
+                            processData.status = "crashed";
+                            processData.errorOutput = `Process exited with code ${code}, signal: ${signal}`;
+                        }
+                        this.updateProcessData(processKey, processData);
+                    }
+                });
+            }
             // Store the running process
             this.runningProcesses.set(pid, childProcess);
-            // Set up log redirection
-            const logStream = createWriteStream(logFilePath, { flags: "a" });
-            // Handle stream errors to prevent crashes
-            logStream.on('error', (error) => {
-                // Log stream error, but don't crash the process
-                console.warn(`Log stream error for PID ${pid}:`, error.message);
-            });
-            if (childProcess.stdout) {
-                childProcess.stdout.on('error', (error) => {
-                    console.warn(`Stdout error for PID ${pid}:`, error.message);
-                });
-                childProcess.stdout.pipe(logStream, { end: false });
-            }
-            if (childProcess.stderr) {
-                childProcess.stderr.on('error', (error) => {
-                    console.warn(`Stderr error for PID ${pid}:`, error.message);
-                });
-                childProcess.stderr.pipe(logStream, { end: false });
-            }
-            // Handle process completion
-            childProcess.on("exit", (code, signal) => {
-                this.runningProcesses.delete(pid);
-                // Safely close the log stream
-                setTimeout(() => {
-                    try {
-                        if (!logStream.destroyed) {
-                            logStream.end();
-                        }
-                    }
-                    catch (error) {
-                        // Ignore stream closing errors
-                    }
-                }, 100);
-                const processData = this.getProcessData(processKey);
-                if (processData) {
-                    if (code === 0) {
-                        processData.status = "stopped";
-                    }
-                    else {
-                        processData.status = "crashed";
-                        processData.errorOutput = `Process exited with code ${code}, signal: ${signal}`;
-                    }
-                    this.updateProcessData(processKey, processData);
-                }
-            });
             // Handle promise rejections to prevent unhandled rejections
             childProcess.catch((error) => {
                 // Process was killed or failed, update status if still tracked
@@ -164,7 +197,7 @@ export class ProcessManager {
                 status: "running",
                 startTime: Date.now(),
                 autoShutdown,
-                logFile: logFilePath,
+                logFile: actualLogFilePath,
             };
             this.storeProcessData(processKey, processData);
             return pid;
