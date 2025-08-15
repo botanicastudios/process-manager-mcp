@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 /*
- * Process Manager MCP Server
+ * Process Manager MCP Server and CLI
  *
- * A Model Context Protocol server that provides process management capabilities:
+ * Provides both MCP server and CLI interfaces for process management:
+ *
+ * MCP Server mode:
  * - Start processes with configurable auto-shutdown behavior
  * - Stop processes by PID
  * - List running processes for the current working directory
  * - Retrieve process logs with tail functionality
  * - Monitor process health and update status automatically
  * - Persist process information across server restarts
+ *
+ * CLI mode:
+ * - Start processes with optional streaming logs
+ * - List all managed processes
+ * - Stop processes by PID
+ * - View or stream process logs
  *
  * The server uses the CWD environment variable to organize processes by directory,
  * allowing multiple instances of the same command to run in different locations.
@@ -17,6 +25,7 @@ import { McpServer, ResourceTemplate, } from "@modelcontextprotocol/sdk/server/m
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { ProcessManager } from "./process-manager.js";
+import { runCLI } from "./cli.js";
 // Create process manager instance
 const processManager = new ProcessManager();
 // Create MCP server
@@ -264,13 +273,31 @@ server.registerResource("logs", new ResourceTemplate("processes://processes/{pid
         };
     }
 });
-// Start the server
-async function main() {
+// Start MCP server
+async function startMcpServer() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
 }
+// Main entry point - detect CLI vs MCP mode
+async function main() {
+    // Check if running as CLI (has command arguments) or MCP server
+    const args = process.argv.slice(2);
+    // If there are arguments and the first one isn't a flag starting with '--',
+    // or if it's a known command, run as CLI
+    const cliCommands = ['start', 'list', 'stop', 'logs', '--help', '--version', '-h', '-V'];
+    const isCliMode = args.length > 0 &&
+        (cliCommands.includes(args[0]) || args[0].startsWith('-'));
+    if (isCliMode) {
+        // Run as CLI
+        await runCLI();
+    }
+    else {
+        // Run as MCP server
+        await startMcpServer();
+    }
+}
 main().catch((error) => {
-    console.error("Server error:", error);
+    console.error("Error:", error);
     process.exit(1);
 });
 //# sourceMappingURL=index.js.map

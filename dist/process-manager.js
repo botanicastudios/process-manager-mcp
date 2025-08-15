@@ -257,7 +257,7 @@ export class ProcessManager {
         }
         try {
             const content = await readFile(logFile, "utf-8");
-            const lines = content.split("\n");
+            const lines = content.split("\n").filter(line => line !== "");
             return lines.slice(-tailLength).join("\n");
         }
         catch (error) {

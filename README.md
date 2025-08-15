@@ -23,6 +23,7 @@ Use at your own risk. The authors are not responsible for any damage caused by m
 
 ## Features
 
+- **Dual Mode Operation**: Works as both MCP server and standalone CLI tool
 - **Start Processes**: Launch processes with configurable auto-shutdown behavior and custom working directories
 - **Stop Processes**: Stop processes by command name or PID
 - **Process Monitoring**: Automatic health checks every 5 seconds
@@ -30,8 +31,21 @@ Use at your own risk. The authors are not responsible for any damage caused by m
 - **Log Management**: Capture and retrieve process logs with tail functionality
 - **Directory-based Organization**: Organize processes by working directory using the `CWD` environment variable
 - **Flexible Path Support**: Support for both absolute and relative paths in the `cwd` parameter
+- **CLI Mode**: Command-line interface for manual process management with streaming logs
 
 ## Installation
+
+### As a CLI tool
+
+```bash
+npm install -g @botanicastudios/process-manager-mcp
+```
+
+Or run directly with npx:
+
+```bash
+npx @botanicastudios/process-manager-mcp --help
+```
 
 ### Claude Code
 
@@ -57,18 +71,72 @@ claude mcp add process-manager -s user -- npx -y @botanicastudios/process-manage
 
 `env.CWD` is optional
 
-## Configuration
+## CLI Usage
+
+The process manager can be used as a standalone CLI tool for managing processes:
+
+### Starting Processes
+
+```bash
+# Start a process and stream logs to stdout (Ctrl+C to stop)
+npx @botanicastudios/process-manager-mcp start "npm run dev"
+
+# Start a persistent background process
+npx @botanicastudios/process-manager-mcp start --persist "npm run dev"
+
+# Start a process in a specific directory
+npx @botanicastudios/process-manager-mcp start --cwd ./server "npm run dev"
+```
+
+### Managing Processes
+
+```bash
+# List all managed processes
+npx @botanicastudios/process-manager-mcp list
+
+# Stop a process by PID
+npx @botanicastudios/process-manager-mcp stop 12345
+
+# View logs for a process
+npx @botanicastudios/process-manager-mcp logs 12345
+
+# Stream logs in real-time
+npx @botanicastudios/process-manager-mcp logs -t 12345
+
+# View last 200 lines of logs
+npx @botanicastudios/process-manager-mcp logs -n 200 12345
+```
+
+### CLI Options
+
+- `-c, --cwd <path>`: Set working directory for the process
+- `-p, --persist`: Keep process running after CLI exits
+- `-t, --tail`: Stream logs in real-time
+- `-n, --num-lines <number>`: Number of log lines to display (default: 100)
+- `--help`: Show help information
+- `--version`: Show version number
+
+## MCP Server Configuration
 
 Set the `CWD` environment variable to specify the working directory for process management:
 
 ```bash
 export CWD=/path/to/your/project
-npx -y process-manager-mcp
+npx -y @botanicastudios/process-manager-mcp
 ```
 
 If `CWD` is not set, the current working directory will be used.
 
-## Tools
+## Shared Process Management
+
+Processes started via the CLI are visible to the MCP server and vice versa. This allows AI agents and human operators to collaborate on process management:
+
+- Start a process via CLI, manage it via MCP
+- Start a process via MCP (AI agent), monitor it via CLI
+- Shared process list and log access
+- Unified process storage
+
+## MCP Server Tools
 
 ### start_process
 
