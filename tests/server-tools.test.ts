@@ -47,9 +47,9 @@ describe("Tool Handler Logic", () => {
 
   describe("start_process tool handler", () => {
     // Create the handler function that would be used in the MCP server
-    const startProcessHandler = async ({ command, auto_shutdown = true, cwd }: { command: string; auto_shutdown?: boolean; cwd?: string }) => {
+    const startProcessHandler = async ({ command, auto_shutdown = true, cwd, env }: { command: string; auto_shutdown?: boolean; cwd?: string; env?: Record<string, string> }) => {
       try {
-        const pid = await mockProcessManager.startProcess(command, auto_shutdown, cwd);
+        const pid = await mockProcessManager.startProcess(command, auto_shutdown, cwd, env);
         return {
           content: [
             {
@@ -80,7 +80,7 @@ describe("Tool Handler Logic", () => {
         auto_shutdown: true,
       });
 
-      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("npm run dev", true, undefined);
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("npm run dev", true, undefined, undefined);
       expect(result.content[0].text).toBe(`Process started successfully. PID: ${expectedPid}`);
       expect(result.isError).toBeUndefined();
     });
@@ -93,7 +93,7 @@ describe("Tool Handler Logic", () => {
         command: "echo hello",
       });
 
-      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("echo hello", true, undefined);
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("echo hello", true, undefined, undefined);
     });
 
     it("should handle process start failure", async () => {
@@ -118,7 +118,7 @@ describe("Tool Handler Logic", () => {
         auto_shutdown: false,
       });
 
-      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("background-service", false, undefined);
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("background-service", false, undefined, undefined);
     });
 
     it("should pass cwd parameter to startProcess", async () => {
@@ -132,7 +132,7 @@ describe("Tool Handler Logic", () => {
         cwd: testCwd,
       });
 
-      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("echo test", true, testCwd);
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("echo test", true, testCwd, undefined);
     });
 
     it("should resolve relative paths for cwd parameter", async () => {
@@ -149,8 +149,58 @@ describe("Tool Handler Logic", () => {
       expect(mockProcessManager.startProcess).toHaveBeenCalledWith(
         "npm start", 
         true, 
-        relativeCwd // The handler passes the relative path, ProcessManager resolves it internally
+        relativeCwd, // The handler passes the relative path, ProcessManager resolves it internally
+        undefined
       );
+    });
+
+    it("should pass environment variables to startProcess", async () => {
+      const expectedPid = 12345;
+      const envVars = {
+        "USER_ID": "12345",
+        "USER_TOKEN": "abcdef",
+        "API_KEY": "xyz789"
+      };
+      mockProcessManager.startProcess.mockResolvedValue(expectedPid);
+
+      await startProcessHandler({
+        command: "node app.js",
+        auto_shutdown: true,
+        env: envVars,
+      });
+
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("node app.js", true, undefined, envVars);
+    });
+
+    it("should handle process with cwd and env together", async () => {
+      const expectedPid = 12345;
+      const testCwd = "./server";
+      const envVars = {
+        "PORT": "3000",
+        "NODE_ENV": "production"
+      };
+      mockProcessManager.startProcess.mockResolvedValue(expectedPid);
+
+      await startProcessHandler({
+        command: "npm start",
+        auto_shutdown: false,
+        cwd: testCwd,
+        env: envVars,
+      });
+
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("npm start", false, testCwd, envVars);
+    });
+
+    it("should handle empty environment variables object", async () => {
+      const expectedPid = 12345;
+      mockProcessManager.startProcess.mockResolvedValue(expectedPid);
+
+      await startProcessHandler({
+        command: "echo test",
+        env: {},
+      });
+
+      expect(mockProcessManager.startProcess).toHaveBeenCalledWith("echo test", true, undefined, {});
     });
   });
 
@@ -607,8 +657,8 @@ describe("Tool Handler Logic", () => {
     it("should handle valid command strings for start_process", async () => {
       mockProcessManager.startProcess.mockResolvedValue(12345);
 
-      const startProcessHandler = async ({ command, auto_shutdown = true }: { command: string; auto_shutdown?: boolean }) => {
-        const pid = await mockProcessManager.startProcess(command, auto_shutdown);
+      const startProcessHandler = async ({ command, auto_shutdown = true, cwd, env }: { command: string; auto_shutdown?: boolean; cwd?: string; env?: Record<string, string> }) => {
+        const pid = await mockProcessManager.startProcess(command, auto_shutdown, cwd, env);
         return {
           content: [{ type: "text", text: `PID: ${pid}` }],
         };
@@ -620,7 +670,9 @@ describe("Tool Handler Logic", () => {
 
       expect(mockProcessManager.startProcess).toHaveBeenCalledWith(
         "echo 'test with spaces and special chars: !@#$%'",
-        true
+        true,
+        undefined,
+        undefined
       );
       expect(result.content[0].text).toBe("PID: 12345");
     });

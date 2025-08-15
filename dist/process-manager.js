@@ -80,7 +80,7 @@ export class ProcessManager {
     getLogFilePath(pid) {
         return path.join(this.logDir, `process_${pid}.log`);
     }
-    async startProcess(command, autoShutdown = true, cwd) {
+    async startProcess(command, autoShutdown = true, cwd, env) {
         const processKey = this.generateProcessKey(command);
         const logFile = this.getLogFilePath(Date.now()); // Use timestamp for unique log file
         // Resolve relative paths relative to process.env.CWD or currentCwd
@@ -105,6 +105,7 @@ export class ProcessManager {
                     cwd: workingDir,
                     stdio: needsStdin ? ["pipe", outFd, errFd] : ["ignore", outFd, errFd],
                     detached: true,
+                    env: env ? { ...process.env, ...env } : process.env,
                 });
                 if (!childProcess.pid) {
                     throw new Error("Failed to start process: No PID returned");
@@ -125,6 +126,7 @@ export class ProcessManager {
                     cwd: workingDir,
                     stdio: ["ignore", "pipe", "pipe"],
                     detached: false,
+                    env: env ? { ...process.env, ...env } : process.env,
                 });
                 if (!childProcess.pid) {
                     throw new Error("Failed to start process: No PID returned");

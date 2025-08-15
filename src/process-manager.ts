@@ -118,7 +118,7 @@ export class ProcessManager {
     return path.join(this.logDir, `process_${pid}.log`);
   }
 
-  async startProcess(command: string, autoShutdown: boolean = true, cwd?: string): Promise<number> {
+  async startProcess(command: string, autoShutdown: boolean = true, cwd?: string, env?: Record<string, string>): Promise<number> {
     const processKey = this.generateProcessKey(command);
     const logFile = this.getLogFilePath(Date.now()); // Use timestamp for unique log file
     // Resolve relative paths relative to process.env.CWD or currentCwd
@@ -148,6 +148,7 @@ export class ProcessManager {
           cwd: workingDir,
           stdio: needsStdin ? ["pipe", outFd, errFd] as any : ["ignore", outFd, errFd] as any,
           detached: true,
+          env: env ? { ...process.env, ...env } : process.env,
         } as any);
 
         if (!childProcess.pid) {
@@ -170,6 +171,7 @@ export class ProcessManager {
           cwd: workingDir,
           stdio: ["ignore", "pipe", "pipe"],
           detached: false,
+          env: env ? { ...process.env, ...env } : process.env,
         });
 
         if (!childProcess.pid) {

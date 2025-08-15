@@ -28,7 +28,7 @@ export declare class ProcessManager {
     private cleanupStaleAutoShutdownProcesses;
     private generateProcessKey;
     private getLogFilePath;
-    startProcess(command: string, autoShutdown?: boolean, cwd?: string): Promise<number>;
+    startProcess(command: string, autoShutdown?: boolean, cwd?: string, env?: Record<string, string>): Promise<number>;
     endProcess(pid: number): Promise<boolean>;
     private storeProcessData;
     private updateProcessData;

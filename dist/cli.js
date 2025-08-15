@@ -32,6 +32,10 @@ export class ProcessManagerCLI {
             .description("Start a new process")
             .option("-c, --cwd <path>", "Working directory for the process")
             .option("-p, --persist", "Keep process running after Ctrl+C", false)
+            .option("-e, --env <key=value>", "Environment variable (can be used multiple times)", (value, previous = []) => {
+            previous.push(value);
+            return previous;
+        }, [])
             .action(async (commandArgs, options) => {
             await this.startCommand(commandArgs.join(" "), options);
         });
@@ -72,9 +76,25 @@ export class ProcessManagerCLI {
     async startCommand(command, options) {
         const baseCwd = process.env.CWD || process.cwd();
         const workingDir = options.cwd ? path.resolve(baseCwd, options.cwd) : baseCwd;
+        // Parse environment variables
+        const envVars = {};
+        if (options.env && options.env.length > 0) {
+            for (const envVar of options.env) {
+                const [key, ...valueParts] = envVar.split('=');
+                if (key && valueParts.length > 0) {
+                    envVars[key] = valueParts.join('=');
+                }
+            }
+        }
         console.log(`Starting process: ${command}`);
         if (options.cwd) {
             console.log(`Working directory: ${workingDir}`);
+        }
+        if (Object.keys(envVars).length > 0) {
+            console.log(`Environment variables:`);
+            for (const [key, value] of Object.entries(envVars)) {
+                console.log(`  ${key}=${value}`);
+            }
         }
         console.log(`Persist after exit: ${options.persist ? "yes" : "no"}`);
         console.log("");
@@ -85,6 +105,7 @@ export class ProcessManagerCLI {
                     shell: true,
                     cwd: workingDir,
                     stdio: ["inherit", "pipe", "pipe"],
+                    env: Object.keys(envVars).length > 0 ? { ...process.env, ...envVars } : process.env,
                 });
                 if (!childProcess.pid) {
                     console.error("Failed to start process: No PID returned");
@@ -124,7 +145,7 @@ export class ProcessManagerCLI {
             }
             else {
                 // Use ProcessManager to start a persistent process
-                const pid = await this.processManager.startProcess(command, false, options.cwd);
+                const pid = await this.processManager.startProcess(command, false, options.cwd, Object.keys(envVars).length > 0 ? envVars : undefined);
                 console.log(`Process started with PID: ${pid}`);
                 console.log("Process will continue running in the background");
                 console.log(`Use 'process-manager-mcp logs ${pid}' to view logs`);

@@ -25,6 +25,7 @@ Use at your own risk. The authors are not responsible for any damage caused by m
 
 - **Dual Mode Operation**: Works as both MCP server and standalone CLI tool
 - **Start Processes**: Launch processes with configurable auto-shutdown behavior and custom working directories
+- **Environment Variables**: Pass custom environment variables to processes
 - **Stop Processes**: Stop processes by command name or PID
 - **Process Monitoring**: Automatic health checks every 5 seconds
 - **Persistent Storage**: Process information persists across server restarts
@@ -86,6 +87,12 @@ npx @botanicastudios/process-manager-mcp start --persist "npm run dev"
 
 # Start a process in a specific directory
 npx @botanicastudios/process-manager-mcp start --cwd ./server "npm run dev"
+
+# Start a process with environment variables
+npx @botanicastudios/process-manager-mcp start --env USER_ID=12345 --env USER_TOKEN=abcdef "node app.js"
+
+# Combine multiple options
+npx @botanicastudios/process-manager-mcp start --persist --cwd ./backend --env PORT=3000 --env NODE_ENV=production "npm start"
 ```
 
 ### Managing Processes
@@ -114,6 +121,7 @@ npx @botanicastudios/process-manager-mcp logs -n 200 12345
 
 - `-c, --cwd <path>`: Set working directory for the process (start command)
 - `-p, --persist`: Keep process running after CLI exits (start command)
+- `-e, --env <key=value>`: Set environment variable (can be used multiple times) (start command)
 - `-t, --tail`: Stream logs in real-time (logs command)
 - `-n, --num-lines <number>`: Number of log lines to display (default: 100) (logs command)
 - `--help`: Show help information
@@ -152,6 +160,7 @@ Start a new process with the given command.
 - `command` (string, required): The command to execute
 - `auto_shutdown` (boolean, optional, default: true): Whether to automatically shutdown the process when the MCP server stops
 - `cwd` (string, optional): Working directory for the process. Supports relative paths like `'./server'` or `'server'` (relative to `${process.env.CWD || process.cwd()}`)
+- `env` (object, optional): Environment variables to set for the process (e.g., `{ "USER_ID": "12345", "USER_TOKEN": "abcdef" }`)
 
 **Returns:** Process PID as an integer
 
@@ -169,6 +178,18 @@ Start a new process with the given command.
   "command": "python app.py",
   "auto_shutdown": true,
   "cwd": "./backend"
+}
+```
+
+```json
+{
+  "command": "node server.js",
+  "auto_shutdown": false,
+  "env": {
+    "PORT": "3000",
+    "NODE_ENV": "production",
+    "API_KEY": "your-api-key-here"
+  }
 }
 ```
 
@@ -385,6 +406,41 @@ Process logs are stored in `~/.process-manager-mcp/logs/` and are organized by P
 ```
 
 This will run `npm start` in the `./frontend` directory relative to the current working directory.
+
+### Starting a Process with Environment Variables
+
+```json
+{
+  "tool": "start_process",
+  "parameters": {
+    "command": "node api-server.js",
+    "auto_shutdown": true,
+    "env": {
+      "PORT": "8080",
+      "DATABASE_URL": "postgres://localhost:5432/mydb",
+      "JWT_SECRET": "your-secret-key"
+    }
+  }
+}
+```
+
+### Starting a Process with Both Directory and Environment
+
+```json
+{
+  "tool": "start_process",
+  "parameters": {
+    "command": "npm run dev",
+    "auto_shutdown": false,
+    "cwd": "./microservice",
+    "env": {
+      "SERVICE_NAME": "auth-service",
+      "PORT": "3001",
+      "NODE_ENV": "development"
+    }
+  }
+}
+```
 
 ### Stopping a Process by PID
 

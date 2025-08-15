@@ -63,14 +63,21 @@ server.registerTool(
             process.env.CWD || process.cwd()
           })`
         ),
+      env: z
+        .record(z.string())
+        .optional()
+        .describe(
+          "Environment variables to set for the process (e.g., { \"USER_ID\": \"12345\", \"USER_TOKEN\": \"abcdef\" })"
+        ),
     },
   },
-  async ({ command, auto_shutdown = true, cwd }) => {
+  async ({ command, auto_shutdown = true, cwd, env }) => {
     try {
       const pid = await processManager.startProcess(
         command,
         auto_shutdown,
-        cwd
+        cwd,
+        env
       );
       if (!pid || pid === undefined) {
         throw new Error("Process started but no PID was returned");
