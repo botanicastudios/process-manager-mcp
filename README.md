@@ -45,7 +45,7 @@ npm install -g @botanicastudios/process-manager-mcp
 Or run directly with npx:
 
 ```bash
-npx @botanicastudios/process-manager-mcp --help
+npx @botanicastudios/process-manager-mcp
 ```
 
 ### Claude Code
