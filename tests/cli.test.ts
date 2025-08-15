@@ -54,7 +54,7 @@ describe("CLI Tests", () => {
       expect(result.stdout).toContain("Process Manager MCP");
       expect(result.stdout).toContain("start [options] <command...>");
       expect(result.stdout).toContain("list");
-      expect(result.stdout).toContain("stop <pid>");
+      expect(result.stdout).toContain("stop <target>");
       expect(result.stdout).toContain("logs [options] <pid>");
       expect(result.exitCode).toBe(0);
     });
@@ -217,6 +217,112 @@ describe("CLI Tests", () => {
         expect.fail("Should have thrown an error");
       } catch (error: any) {
         expect(error.stderr).toContain("Invalid PID");
+        expect(error.exitCode).toBe(1);
+      }
+    });
+
+    it("should stop all processes with 'stop all' command", async () => {
+      // Start multiple processes
+      const pid1 = await processManager.startProcess("sleep 10", false);
+      const pid2 = await processManager.startProcess("sleep 10", false);
+      const pid3 = await processManager.startProcess("sleep 10", false);
+
+      // Wait a moment for config to be written
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await execa("node", [cliPath, "stop", "all"], {
+        cwd: testDir,
+      });
+
+      expect(result.stdout).toContain("Stopping 3 process(es)");
+      expect(result.stdout).toContain("✓ Stopped successfully");
+      expect(result.stdout).toContain("Summary: 3 stopped, 0 removed (stale), 0 failed");
+      expect(result.exitCode).toBe(0);
+
+      // Wait for config to sync after stop
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Verify all processes are no longer running
+      const processes = processManager.getCurrentCwdProcesses();
+      const runningProcesses = Object.values(processes).filter(p => p.status === "running");
+      expect(runningProcesses.length).toBe(0);
+    });
+
+    it("should accept 'ALL' in uppercase", async () => {
+      // Start multiple processes
+      const pid1 = await processManager.startProcess("sleep 10", false);
+      const pid2 = await processManager.startProcess("sleep 10", false);
+
+      // Wait a moment for config to be written
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await execa("node", [cliPath, "stop", "ALL"], {
+        cwd: testDir,
+      });
+
+      expect(result.stdout).toContain("Stopping 2 process(es)");
+      expect(result.stdout).toContain("✓ Stopped successfully");
+      expect(result.stdout).toContain("Summary: 2 stopped, 0 removed (stale), 0 failed");
+      expect(result.exitCode).toBe(0);
+
+      // Wait for config to sync after stop
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Verify all processes are no longer running
+      const processes = processManager.getCurrentCwdProcesses();
+      const runningProcesses = Object.values(processes).filter(p => p.status === "running");
+      expect(runningProcesses.length).toBe(0);
+    });
+
+    it("should handle 'stop all' when no processes are running", async () => {
+      const result = await execa("node", [cliPath, "stop", "all"], {
+        cwd: testDir,
+      });
+
+      expect(result.stdout).toContain("No processes are currently running");
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should report partial failures when stopping all", async () => {
+      // Start a process
+      const pid = await processManager.startProcess("sleep 10", false);
+
+      // Wait a moment for config to be written
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Manually add a fake process to config that can't be stopped
+      const config = processManager.getConfig();
+      const fakeProcess = {
+        pid: 99999,
+        command: "fake-process",
+        cwd: testDir,
+        status: "running" as const,
+        startTime: Date.now(),
+        autoShutdown: false,
+      };
+      const currentConfig = config.get(testDir, {});
+      currentConfig["fake_process"] = fakeProcess;
+      config.set(testDir, currentConfig);
+
+      const result = await execa("node", [cliPath, "stop", "all"], {
+        cwd: testDir,
+      });
+      
+      expect(result.stdout).toContain("Stopping 2 process(es)");
+      expect(result.stdout).toContain("✓ Stopped successfully");
+      expect(result.stdout).toContain("✓ Process not found or already stopped, removed from manager");
+      expect(result.stdout).toContain("Summary: 1 stopped, 1 removed (stale), 0 failed");
+      expect(result.exitCode).toBe(0);
+    });
+
+    it("should error when stop is called with invalid target", async () => {
+      try {
+        await execa("node", [cliPath, "stop", "invalid"], {
+          cwd: testDir,
+        });
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.stderr).toContain("Invalid PID. Please provide a valid number or use 'all'");
         expect(error.exitCode).toBe(1);
       }
     });

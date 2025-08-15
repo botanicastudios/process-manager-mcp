@@ -6,6 +6,7 @@ export declare class ProcessManagerCLI {
     private startCommand;
     private listCommand;
     private stopCommand;
+    private stopAllCommand;
     private logsCommand;
     run(): Promise<void>;
     cleanup(): void;

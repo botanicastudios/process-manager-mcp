@@ -280,35 +280,45 @@ export class ProcessManager {
     }
 
     let killSuccess = false;
+    let processIsAlive = false;
 
+    // First check if the process is actually alive
     try {
-      // Kill the process
-      const runningProcess = this.runningProcesses.get(processToKill.pid);
-      if (runningProcess) {
-        // Handle the promise to prevent unhandled rejection
-        runningProcess.catch(() => {
-          // Process termination error, ignore
-        });
-        runningProcess.kill("SIGTERM");
-        this.runningProcesses.delete(processToKill.pid);
-        killSuccess = true;
-      } else {
-        // Process might be detached, try killing by PID
-        process.kill(processToKill.pid, "SIGTERM");
-        killSuccess = true;
+      process.kill(processToKill.pid, 0);
+      processIsAlive = true;
+    } catch {
+      processIsAlive = false;
+    }
+
+    // If process is alive, try to kill it
+    if (processIsAlive) {
+      try {
+        // Kill the process
+        const runningProcess = this.runningProcesses.get(processToKill.pid);
+        if (runningProcess) {
+          // Handle the promise to prevent unhandled rejection
+          runningProcess.catch(() => {
+            // Process termination error, ignore
+          });
+          runningProcess.kill("SIGTERM");
+          this.runningProcesses.delete(processToKill.pid);
+          killSuccess = true;
+        } else {
+          // Process might be detached, try killing by PID
+          process.kill(processToKill.pid, "SIGTERM");
+          killSuccess = true;
+        }
+      } catch (error) {
+        // Kill failed
+        killSuccess = false;
       }
-    } catch (error) {
-      // Kill failed, but we should still check if process is stale
-      killSuccess = false;
     }
 
-    // Always remove from config if process is stopped/crashed or kill succeeded
-    if (processToKill.status === "stopped" || processToKill.status === "crashed" || killSuccess) {
-      this.removeProcessData(processKey);
-      return true;
-    }
-
-    return false;
+    // Always remove from config - either we killed it, or it was already dead
+    this.removeProcessData(processKey);
+    
+    // Return true if we successfully killed it OR if it was already dead (stale)
+    return killSuccess || !processIsAlive;
   }
 
   private storeProcessData(processKey: string, data: ProcessData) {

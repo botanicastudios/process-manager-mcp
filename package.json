@@ -1,6 +1,6 @@
 {
   "name": "@botanicastudios/process-manager-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "MCP server for managing processes with persistent storage",
   "main": "dist/index.js",

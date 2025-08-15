@@ -97,6 +97,9 @@ npx @botanicastudios/process-manager-mcp list
 # Stop a process by PID
 npx @botanicastudios/process-manager-mcp stop 12345
 
+# Stop all managed processes
+npx @botanicastudios/process-manager-mcp stop all
+
 # View logs for a process
 npx @botanicastudios/process-manager-mcp logs 12345
 
@@ -109,12 +112,14 @@ npx @botanicastudios/process-manager-mcp logs -n 200 12345
 
 ### CLI Options
 
-- `-c, --cwd <path>`: Set working directory for the process
-- `-p, --persist`: Keep process running after CLI exits
-- `-t, --tail`: Stream logs in real-time
-- `-n, --num-lines <number>`: Number of log lines to display (default: 100)
+- `-c, --cwd <path>`: Set working directory for the process (start command)
+- `-p, --persist`: Keep process running after CLI exits (start command)
+- `-t, --tail`: Stream logs in real-time (logs command)
+- `-n, --num-lines <number>`: Number of log lines to display (default: 100) (logs command)
 - `--help`: Show help information
 - `--version`: Show version number
+
+**Note:** Use `stop all` to stop all managed processes at once.
 
 ## MCP Server Configuration
 

@@ -44,10 +44,20 @@ export class ProcessManagerCLI {
         });
         // Stop command
         this.program
-            .command("stop <pid>")
-            .description("Stop a managed process by PID")
-            .action(async (pidStr) => {
-            await this.stopCommand(parseInt(pidStr, 10));
+            .command("stop <target>")
+            .description("Stop a managed process by PID or use 'all' to stop all processes")
+            .action(async (target) => {
+            if (target.toLowerCase() === "all") {
+                await this.stopAllCommand();
+            }
+            else {
+                const pid = parseInt(target, 10);
+                if (isNaN(pid)) {
+                    console.error("Invalid PID. Please provide a valid number or use 'all' to stop all processes.");
+                    process.exit(1);
+                }
+                await this.stopCommand(pid);
+            }
         });
         // Logs command
         this.program
@@ -150,15 +160,38 @@ export class ProcessManagerCLI {
         process.exit(0);
     }
     async stopCommand(pid) {
-        if (isNaN(pid)) {
-            console.error("Invalid PID. Please provide a valid number.");
+        console.log(`Stopping process ${pid}...`);
+        // Check if process exists in our list
+        const processes = this.processManager.getCurrentCwdProcesses();
+        let processExists = false;
+        let isAlive = false;
+        for (const data of Object.values(processes)) {
+            if (data.pid === pid) {
+                processExists = true;
+                // Check if the process is actually running
+                try {
+                    process.kill(pid, 0);
+                    isAlive = true;
+                }
+                catch {
+                    isAlive = false;
+                }
+                break;
+            }
+        }
+        if (!processExists) {
+            console.error("Process not found in manager");
             process.exit(1);
         }
-        console.log(`Stopping process ${pid}...`);
         try {
             const success = await this.processManager.endProcess(pid);
             if (success) {
-                console.log("Process stopped successfully");
+                if (!isAlive) {
+                    console.log("Process not found or already stopped, removing from manager");
+                }
+                else {
+                    console.log("Process stopped successfully");
+                }
                 process.exit(0);
             }
             else {
@@ -170,6 +203,53 @@ export class ProcessManagerCLI {
             console.error(`Failed to stop process: ${error}`);
             process.exit(1);
         }
+    }
+    async stopAllCommand() {
+        const processes = this.processManager.getCurrentCwdProcesses();
+        const processList = Object.entries(processes);
+        if (processList.length === 0) {
+            console.log("No processes are currently running.");
+            process.exit(0);
+        }
+        console.log(`Stopping ${processList.length} process(es)...\n`);
+        let successCount = 0;
+        let staleCount = 0;
+        let failureCount = 0;
+        for (const [_, data] of processList) {
+            try {
+                // Check if the process is actually running
+                let isAlive = false;
+                try {
+                    process.kill(data.pid, 0);
+                    isAlive = true;
+                }
+                catch {
+                    isAlive = false;
+                }
+                console.log(`Stopping process ${data.pid} (${data.command})...`);
+                const success = await this.processManager.endProcess(data.pid);
+                if (success) {
+                    if (!isAlive) {
+                        console.log(`  ✓ Process not found or already stopped, removed from manager`);
+                        staleCount++;
+                    }
+                    else {
+                        console.log(`  ✓ Stopped successfully`);
+                        successCount++;
+                    }
+                }
+                else {
+                    console.log(`  ✗ Failed to stop`);
+                    failureCount++;
+                }
+            }
+            catch (error) {
+                console.log(`  ✗ Error: ${error}`);
+                failureCount++;
+            }
+        }
+        console.log(`\nSummary: ${successCount} stopped, ${staleCount} removed (stale), ${failureCount} failed`);
+        process.exit(failureCount > 0 ? 1 : 0);
     }
     async logsCommand(pid, options) {
         if (isNaN(pid)) {
